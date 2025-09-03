@@ -1,18 +1,6 @@
 import { createServer, IncomingMessage, ServerResponse } from 'http';
 import { URL } from 'url';
-import { User, Product, Role } from './types.js';
-
-const users: User[] = [
-  { id: '1', name: 'クリニックA', role: Role.CLINIC },
-  { id: '2', name: 'メーカーB', role: Role.MANUFACTURER },
-  { id: '3', name: 'ディーラーC', role: Role.DEALER },
-  { id: '4', name: 'サロンD', role: Role.SALON, dealerId: '3' }
-];
-
-const products: Product[] = [
-  { id: 'p1', name: '美容液', description: 'お肌に優しい美容液', price: 5000, ingredientIds: [] },
-  { id: 'p2', name: '保湿クリーム', description: 'しっとり保湿クリーム', price: 3000, ingredientIds: [] }
-];
+import { initDb, fetchProducts, findUser } from './db.js';
 
 function sendJson(res: ServerResponse, status: number, data: unknown) {
   res.statusCode = status;
@@ -42,13 +30,14 @@ const server = createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
 
   if (req.method === 'GET' && url.pathname === '/api/products') {
+    const products = await fetchProducts();
     return sendJson(res, 200, products);
   }
 
   if (req.method === 'POST' && url.pathname === '/api/login') {
     try {
       const body = await parseBody(req);
-      const user = users.find(u => u.id === body.id);
+      const user = await findUser(body.id);
       if (user) {
         return sendJson(res, 200, user);
       }
@@ -62,6 +51,13 @@ const server = createServer(async (req, res) => {
 });
 
 const PORT = 3000;
-server.listen(PORT, () => {
-  console.log(`Server running at http://localhost:${PORT}`);
-});
+initDb()
+  .then(() => {
+    server.listen(PORT, () => {
+      console.log(`Server running at http://localhost:${PORT}`);
+    });
+  })
+  .catch(err => {
+    console.error('Failed to initialize database', err);
+    process.exit(1);
+  });
