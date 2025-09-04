@@ -22,4 +22,4 @@ PostgreSQL とサーバーをまとめて起動する `docker-compose.yml` を�
 docker compose up --build
 ```
 
-サーバーは `http://localhost:3000` で利用でき、データは PostgreSQL に保存されます。
+サーバーは `http://localhost:3000` で利用でき、ビルド済みのフロントエンドも同じポートで配信されます。データは PostgreSQL に保存されます。
