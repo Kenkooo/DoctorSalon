@@ -1,5 +1,7 @@
 import { createServer, IncomingMessage, ServerResponse } from 'http';
-import { URL } from 'url';
+import { createReadStream, promises as fs } from 'fs';
+import path from 'path';
+import { URL, fileURLToPath } from 'url';
 import { initDb, fetchProducts, findUser } from './db.js';
 
 function sendJson(res: ServerResponse, status: number, data: unknown) {
@@ -22,6 +24,19 @@ function parseBody(req: IncomingMessage): Promise<any> {
   });
 }
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const STATIC_DIR = __dirname;
+
+const CONTENT_TYPES: Record<string, string> = {
+  '.html': 'text/html',
+  '.js': 'text/javascript',
+  '.css': 'text/css',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.json': 'application/json'
+};
+
 const server = createServer(async (req, res) => {
   if (!req.url) {
     return sendJson(res, 404, { message: 'Not found' });
@@ -29,21 +44,54 @@ const server = createServer(async (req, res) => {
 
   const url = new URL(req.url, `http://${req.headers.host}`);
 
-  if (req.method === 'GET' && url.pathname === '/api/products') {
-    const products = await fetchProducts();
-    return sendJson(res, 200, products);
+  if (url.pathname.startsWith('/api/')) {
+    if (req.method === 'GET' && url.pathname === '/api/products') {
+      const products = await fetchProducts();
+      return sendJson(res, 200, products);
+    }
+
+    if (req.method === 'POST' && url.pathname === '/api/login') {
+      try {
+        const body = await parseBody(req);
+        const user = await findUser(body.id);
+        if (user) {
+          return sendJson(res, 200, user);
+        }
+        return sendJson(res, 404, { message: 'User not found' });
+      } catch (err) {
+        return sendJson(res, 400, { message: 'Invalid JSON' });
+      }
+    }
+
+    return sendJson(res, 404, { message: 'Not found' });
   }
 
-  if (req.method === 'POST' && url.pathname === '/api/login') {
+  if (req.method === 'GET') {
+    const filePath = path.join(
+      STATIC_DIR,
+      url.pathname === '/' ? 'index.html' : url.pathname
+    );
+
     try {
-      const body = await parseBody(req);
-      const user = await findUser(body.id);
-      if (user) {
-        return sendJson(res, 200, user);
+      await fs.access(filePath);
+      const ext = path.extname(filePath).toLowerCase();
+      res.statusCode = 200;
+      res.setHeader('Content-Type', CONTENT_TYPES[ext] || 'application/octet-stream');
+      createReadStream(filePath).pipe(res);
+      return;
+    } catch {
+      try {
+        const indexPath = path.join(STATIC_DIR, 'index.html');
+        const data = await fs.readFile(indexPath);
+        res.statusCode = 200;
+        res.setHeader('Content-Type', 'text/html');
+        res.end(data);
+        return;
+      } catch {
+        res.statusCode = 404;
+        res.end('Not found');
+        return;
       }
-      return sendJson(res, 404, { message: 'User not found' });
-    } catch (err) {
-      return sendJson(res, 400, { message: 'Invalid JSON' });
     }
   }
 
